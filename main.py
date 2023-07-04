@@ -1,40 +1,51 @@
-from fastapi import FastAPI, Request, Body
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, Request, Depends, HTTPException, status
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, HttpUrl
 import yt_dlp as youtube_dl
-import ssl
+import schema
 import utils
 
-# Disable SSL verification
-ssl._create_default_https_context = ssl._create_unverified_context
 
-app = FastAPI(title="Youtube Downloader", description="Downloads youtube videos given the url link")
+# CONSTANTS 
+TITLE = "Youtube Downloader"
+DESCRIPTION = "Downloads youtube videos given the url link"
+
+
+# SETTING UP FASTAPI APPLICATION, STATIC FILES, AND TEMPLATES
+app = FastAPI(title=TITLE, description=DESCRIPTION)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-class videoOptions(BaseModel):
-    url: HttpUrl
-    quality: utils.FormatCategory
 
+# SETTING UP ROUTES 
 @app.get("/")
 def index(request: Request):
-    return templates.TemplateResponse("index.html",{"request": request})
+    # this route hosts a html template for the application
+    template_name = "index.html"
+    context = {"request": request}
+    return templates.TemplateResponse(name=template_name, context=context)
 
 
 @app.post("/download/")
-def download(videoOption: videoOptions):
-      baseUrl = "https://www.youtube.com/watch?v="
-      videoId = videoOption.url.split("=")[1]
-      targetUrl = baseUrl+videoId
+def download(request_info: schema.YtVideoRequestInfo, quality : str = Depends(lambda q: utils.resolveQuality(q))):
+      # takes in the request body type of videoOptions containing the link and the 
+      # video and audio quality to be downloaded
+      target_url = request_info.url
+      print(f"Youtube video link: {target_url}")
+      print(f"download quality: {quality}")
+      print(f"download format: {request_info.format}")
+
+                
       ydlOpts ={
-          'format': videoOption.quality.value,
-              'postprocessors': [  # Post-processing options
+        'format': quality,
+        'postprocessors': [  # Post-processing options
         {'key': 'FFmpegExtractAudio'},  # Extract audio
-        {'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'},  # Convert video to MP4
-    ],
+        {'key': 'FFmpegVideoConvertor', 'preferedformat': request_info.format },  # Convert video to requested format
+        ],
       }
-      with youtube_dl.YoutubeDL(ydlOpts) as ydl:
-        ydl.download([targetUrl])
-        return ""
+
+      if target_url: 
+        with youtube_dl.YoutubeDL(ydlOpts) as ydl:
+            ydl.download([target_url])
+            return ""
+      return HTTPException(status.HTTP_400_BAD_REQUEST, "Youtube URL link missing")
