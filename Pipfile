@@ -5,7 +5,8 @@ name = "pypi"
 
 [packages]
 fastapi = {extras = ["all"], version = "*"}
-youtube-dl = "*"
+yt-dlp = "*"
+ffmpeg-python = "*"
 
 [dev-packages]
 
